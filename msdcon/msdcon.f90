@@ -89,7 +89,6 @@ call file_open( nernstfile, "write" )
 ! Get parameters
 !==================================================
 
-open( inptfile%unit, file='msd.inpt' )
 read( inptfile%unit, '(a)' ) filein
 read( inptfile%unit, * ) num
 read( inptfile%unit, * ) nmsdlength
