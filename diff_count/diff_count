@@ -4,11 +4,17 @@
 
 # diff_count
 # reads in tetrahedral occupations from "fort.40", and counts diffusion events
-# reads in positions from "poscart.out" and cell lengths from the end of "restart.dat" so that distance travelled per event can be calculated.
+# reads in tetrahedra positions from "fort.20" to allow an approximation of the distance travelled during a diffusion event
+
+require "matrix"
 
 class Site
   
   attr_accessor :id
+  
+  def self.centers=( array_of_centers )
+    @@centers = array_of_centers
+  end
   
   def self.ntet=( nlattice_sites )
     @@nlattice_sites = nlattice_sites
@@ -18,16 +24,24 @@ class Site
     @id = site_number
   end
   
+  def center
+    @@centers[ @id ]
+  end
+  
+  def self.get_center( num )
+    @@centers[ num ]
+  end
+  
   def is_lattice_site?
-    if ( ( @id > 0 ) && ( @id <= @@nlattice_sites ) )
+    !is_interstitial?
+  end
+  
+  def is_interstitial?
+    if ( is_tet? || is_oct? )
       return true
     else
       return false
     end
-  end
-  
-  def is_interstitial?
-    !is_lattice_site?
   end
   
   def copy
@@ -43,7 +57,7 @@ class Site
   end
   
   def is_tet?
-    if ( @id > @@nlatticesites )
+    if ( @id > @@nlattice_sites )
       return true
     else
       return false
@@ -58,6 +72,7 @@ class Ion
   attr_reader :id
   
   @@nions = 0
+  @@dr_sum = Vector.elements( [ 0.0, 0.0, 0.0 ] )
   
   def initialize( init_site )
     @@nions += 1
@@ -67,6 +82,10 @@ class Ion
     @step_departed = nil
     clear_history
     update
+  end
+  
+  def self.cell_lengths=( cell_lengths )
+    @@cell_lengths = cell_lengths
   end
   
   def to_s
@@ -82,10 +101,27 @@ class Ion
     @first_tet = false
   end
   
+  def distance_travelled
+    dr2 = 0.0
+    dr_vec = []
+    ( @new_site.center - @old_site.center ).to_a.each_with_index do |dr, index| 
+      if ( dr > @@cell_lengths[index]/2.0 ) then dr -= @@cell_lengths[index] end
+      if ( dr < -@@cell_lengths[index]/2.0 ) then dr += @@cell_lengths[index] end
+      dr2 += dr*dr
+      dr_vec << dr
+    end
+    @@dr_sum += Vector.elements( dr_vec )
+    return Math.sqrt( dr2 )
+  end
+  
+  def self.net_displacement
+    return Math.sqrt( @@dr_sum.to_a.inject(0) { |sum_sq, element| sum_sq + element * element } )
+  end
+  
 end
 
-nions = ARGV[0].to_i
-ntet = ARGV[1].to_i
+nions = ARGV[0].to_i # the number of mobile ions
+ntet = ARGV[1].to_i # the number of available lattice sites
 unless ARGV[2].nil?
   nskip = ARGV[2].to_i 
 else
@@ -102,7 +138,24 @@ ntet = 0
 ntet_longt = 0
 nFrenkel_oct = 0
 nFrenkel_tet = 0
-nanions = ntet / 2
+
+begin
+  tetfile = File.new("fort.20", "r")
+rescue
+  abort "fort.20 not found"
+end
+
+Site.centers = [ nil ] + tetfile.readlines.map do |line| 
+  Vector.elements( line.split.collect { |element| element.to_f } )
+end
+
+begin
+  rstfile = File.new("testout.rst", "r")
+rescue
+  abort "testout.rst not found"
+end
+
+Ion.cell_lengths = rstfile.readlines[-3..-1].map{ |line| line.strip.to_f }
 
 begin
   file = File.new("fort.40", "r")
@@ -116,15 +169,14 @@ step = 1
 line = file.gets.split
 line.shift # remove step number
 line.each { |value| ions << Ion.new( value.to_i ) }
+
 while ( tline = file.gets )
   line = tline.split
   step += 1
   fileout.puts "New Step: #{step}"
   line.shift
-  line.each_with_index do |value, index| 
-    ions[index].new_site.id = value.to_i
-  end
-  if step % nskip == 0
+  line.each_with_index { |value, index| ions[index].new_site.id = value.to_i }
+  if ( step % nskip ) == 0
     ions.each do |ion|
       if ion.new_site.id != ion.previous_site.id # ion has moved to another site
         if ion.previous_site.is_lattice_site? # Frenkel pair created
@@ -142,6 +194,8 @@ while ( tline = file.gets )
             fileout.puts "Step #{ion.step_departed}=>#{step}: Ion #{ion.id} returned to lattice site #{ion.old_site.id}"
           elsif ion.old_site.is_lattice_site? # Ion has moved to a new lattice site. Complete diffusion event.
             fileout.puts "Step #{ion.step_departed}=>#{step}: Ion #{ion.id} moved from lattice site #{ion.old_site.id} to #{ion.new_site.id}"
+            fileout.puts "distance between lattice sites: #{ion.distance_travelled}"
+            fileout.puts "net displacement: #{Ion.net_displacement}"
             ion.update
             ndiff_oct += 1 if ion.first_oct == true
             ndiff_tet += 1 if ion.first_tet == true

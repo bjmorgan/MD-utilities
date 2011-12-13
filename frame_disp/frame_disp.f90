@@ -18,7 +18,7 @@ program framedisp
         double precision, dimension(3) :: oldr 
         double precision, dimension(3) :: total_disp
         logical :: mobile
-        logical :: already_mobile
+        integer :: static_count ! the number of frames since an ion has been mobile
         logical :: monitor
     end type ion_type
 
@@ -37,7 +37,7 @@ program framedisp
 
     type(iofile) :: inptfile, dispfile, posfile, outfile, outfile_long, dispdistfile, monitorfile, chgdispfile
 
-    double precision :: msd_tot
+    double precision :: msd_tot, msd_mobile_tot
     double precision :: dummy
     double precision :: max_disp
     double precision :: this_disp_sq
@@ -60,8 +60,6 @@ program framedisp
     integer, parameter :: z = 3
 
     ! set up input/output files
-
-    !print *, i_to_s( 20 )
 
     call file_init( inptfile, "frame_disp.inpt" )
     call file_init( dispfile, "disp.out" )
@@ -89,10 +87,14 @@ program framedisp
     read(inptfile%iounit,*) disp_cut
     read(inptfile%iounit,*) nbins
     allocate( disp_bin( nbins ), stat=err )
-    if ( err /= 0 ) print *,"Cannot allocate memory for disp_bins(:)" ; stop
+    if ( err /= 0 ) then
+        print *,"Cannot allocate memory for disp_bins(:)" ; stop
+    endif
     read(inptfile%iounit,*) nspecies
-    allocate( species( nspecies ), stat=err ) ; stop
-    if ( err /= 0 ) print *,"Cannot allocate memory for species(:)"
+    allocate( species( nspecies ), stat=err ) 
+    if ( err /= 0 ) then
+        print *,"Cannot allocate memory for species(:)" ; stop
+    endif
 
     do nsp=1, nspecies ! read number_of_ions and count_displacement for each species
         
@@ -101,11 +103,15 @@ program framedisp
         read ( inptfile%iounit, * ) p_species%number_of_ions ! read number of ions for each species
         ntotal_ions = ntotal_ions + p_species%number_of_ions ! add to the total number of ions in the simulation
         allocate( p_species%ion( p_species%number_of_ions ), stat=err )
-        if ( err /= 0 ) print *,"Cannot allocate memory for species ", nsp ; stop
+        if ( err /= 0 ) then
+            print *,"Cannot allocate memory for species ", nsp ; stop
+        endif
         
         do nion = 1, p_species%number_of_ions
             allocate( p_species%ion(nion)%time(disp_length), stat=err )
-            if (err /= 0) print *,"Cannot allocate memory for ion ", nion, " in species ", nsp ; stop
+            if (err /= 0) then
+                print *,"Cannot allocate memory for ion ", nion, " in species ", nsp ; stop
+            endif
         enddo
         
         read( inptfile%iounit, * ) p_species%count_displacement ! consider this species when summing the total displacement? ( .true. || .false. )
@@ -124,10 +130,9 @@ program framedisp
     
     do nsp = 1, nspecies
         species( nsp )%ion(:)%mobile = .false.
+        species( nsp )%ion(:)%static_count = 0
     enddo
     
-!     species(1)%ion(26)%monitor = .true.
-
     print *,"Analysing", nsteps, "steps"
     do i=1, ntotal_ions+1 
         read( dispfile%iounit, * ) i_dummy ! read past header information in <disp.out>
@@ -146,10 +151,9 @@ program framedisp
                 p_ion => p_species%ion( nion )
                 p_time => p_ion%time( nindex )
                 
-                p_ion%already_mobile = p_ion%mobile
                 p_ion%mobile = .false.
-                read( dispfile%iounit, * ) p_time%dr ! read displacement for each ion
                 p_ion%oldr = p_time%r
+                read( dispfile%iounit, * ) p_time%dr ! read displacement for each ion
                 read( posfile%iounit,* ) p_time%r   ! read positions for each ion
                 
                 nullify( p_ion )
@@ -164,6 +168,7 @@ program framedisp
         if (istep < disp_length) cycle
         
         msd_tot = 0.0d0
+        msd_mobile_tot = 0.0d0
         chg_disp = 0.0d0
         chg_disp_mobile = 0.0d0
 
@@ -184,32 +189,34 @@ program framedisp
                 this_disp(:) = this_disp(:) + p_ion%total_disp(:)
                 this_disp_sq = length_sq( p_ion%total_disp(:) )
  
-                if ( p_ion%already_mobile == .false. ) then
-                    chg_disp_tot(:) = chg_disp_tot(:) + p_ion%total_disp(:) * p_species%z
-                else
-                    chg_disp_tot(:) = chg_disp_tot(:) + p_ion%time(nindex)%dr(:) * p_species%z
-                endif
+                chg_disp_tot(:) = chg_disp_tot(:) + p_ion%time(nindex)%dr(:) * p_species%z
                 
                 if ( sqrt( this_disp_sq ) > max_disp ) then
                     print *, "Warning, displacement exceeds max_disp: ", sqrt( this_disp_sq ), " > ", max_disp
                     stop
-                else if ( sqrt( this_disp_sq ) > disp_cut ) then
+                else if ( sqrt( this_disp_sq ) > disp_cut ) then ! ion is mobile
                     p_ion%mobile = .true.
+                    p_ion%static_count = 0
                     p_species%nmobile = p_species%nmobile + 1
                     this_disp_mobile(:) = this_disp_mobile(:) + p_ion%total_disp(:)
 
-                    if ( p_ion%already_mobile == .false. ) then
+                    if (  p_ion%static_count >= disp_length ) then
+  ! at least (disp_length) steps since this ion counted as being mobile, so we need to count all (disp_length) steps
                         chg_disp_mobile_tot(:) = chg_disp_mobile_tot(:) + p_ion%total_disp(:) * p_species%z
                     else    
                         chg_disp_mobile_tot(:) = chg_disp_mobile_tot(:) + p_ion%time(nindex)%dr(:) * p_species%z
                     endif
-
+                else
+                    p_ion%static_count = p_ion%static_count + 1    
                 endif
 
                 if ( p_species%count_displacement == .true. ) then                                    
                     msd_tot = msd_tot + this_disp_sq
                     this_bin = int( ( sqrt( this_disp_sq )/max_disp )*nbins ) + 1
                     disp_bin( this_bin ) = disp_bin( this_bin ) + 1
+                    if ( p_ion%mobile ) then
+                        msd_mobile_tot = msd_mobile_tot + this_disp_sq
+                    endif
                 endif
                 
                 nullify( p_ion )
@@ -223,11 +230,7 @@ program framedisp
             
         enddo
         
-!         chg_disp_tot(:) = chg_disp_tot(:) + chg_disp(:)
-!         chg_disp_mobile_tot(:) = chg_disp_mobile_tot(:) + chg_disp_mobile(:)
-        
         ! frame output
-        write(outfile%iounit,*) istep, msd_tot/float(ncounted_ions)
         write(outfile_long%iounit,'(a5,i5,a9,i3,a8)',advance="no") "Step ", istep, " Configs ", disp_length+1, " Mobile "
 
         do nsp = 1, nspecies
@@ -284,8 +287,9 @@ program framedisp
             enddo
         enddo
         
-        write( chgdispfile%iounit, '(i5,1x,5(e10.3,1x))' ) istep, length_sq( chg_disp ), length_sq( chg_disp_mobile ), length_sq( chg_disp_tot ), length_sq( chg_disp_mobile_tot ), sign( chg_disp_mobile_tot(z)**2, chg_disp_mobile_tot(z) )
+        write(outfile%iounit, '(i5,1x,2(e10.3,1x))' ) istep, msd_tot/float(ncounted_ions), msd_mobile_tot/float(ncounted_ions) 
 
+        write( chgdispfile%iounit, '(i5,1x,5(e10.3,1x))' ) istep, length_sq( chg_disp ), length_sq( chg_disp_mobile ), length_sq( chg_disp_tot ), length_sq( chg_disp_mobile_tot ), sign( chg_disp_mobile_tot(z)**2, chg_disp_mobile_tot(z) )
     enddo
     
     do this_bin=1, nbins
