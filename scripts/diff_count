@@ -8,6 +8,14 @@
 
 require "matrix"
 
+def load_file( filename )
+  begin
+    read_in = File.new( filename, 'r' )
+  rescue
+    abort "\"#{ filename }\" not found"
+  end
+end
+
 class Site
   
   attr_accessor :id
@@ -120,13 +128,11 @@ class Ion
   
 end
 
+abort "usage: diff_count N_MOBILE_IONS N_LATTICE_SITES [NSKIP]" if ARGV.length < 2
+
 nions = ARGV[0].to_i # the number of mobile ions
 ntet = ARGV[1].to_i # the number of available lattice sites
-unless ARGV[2].nil?
-  nskip = ARGV[2].to_i 
-else
-  nskip = 1
-end
+nskip = ARGV[2].nil? ? 1 : ARGV[2].to_i
 
 ions = Array.new
 Site.ntet = ntet
@@ -138,44 +144,24 @@ ntet = 0
 ntet_longt = 0
 nFrenkel_oct = 0
 nFrenkel_tet = 0
+step = 1
 
-begin
-  tetfile = File.new("fort.20", "r")
-rescue
-  abort "fort.20 not found"
-end
+tetfile = load_file( "fort.20" )
+Site.centers = [ nil ] + tetfile.readlines.map { |line| Vector.elements( line.split.collect { |element| element.to_f } ) }
 
-Site.centers = [ nil ] + tetfile.readlines.map do |line| 
-  Vector.elements( line.split.collect { |element| element.to_f } )
-end
-
-begin
-  rstfile = File.new("testout.rst", "r")
-rescue
-  abort "testout.rst not found"
-end
-
+rstfile = load_file( "testout.rst" )
 Ion.cell_lengths = rstfile.readlines[-3..-1].map{ |line| line.strip.to_f }
 
-begin
-  file = File.new("fort.40", "r")
-rescue
-  abort "fort.40 not found"
-end
-
+file = load_file( "fort.40" )
 fileout = File.new("diff_count.out", "w")
 
-step = 1
-line = file.gets.split
-line.shift # remove step number
-line.each { |value| ions << Ion.new( value.to_i ) }
+file.gets.split[1..-1].each { |value| ions << Ion.new( value.to_i ) }
 
 while ( tline = file.gets )
-  line = tline.split
+  break if tline.nil? # allow for a blank line at the end of the occupation file
   step += 1
   fileout.puts "New Step: #{step}"
-  line.shift
-  line.each_with_index { |value, index| ions[index].new_site.id = value.to_i }
+  tline.split[1..-1].each_with_index { |value, index| ions[index].new_site.id = value.to_i }
   if ( step % nskip ) == 0
     ions.each do |ion|
       if ion.new_site.id != ion.previous_site.id # ion has moved to another site
@@ -193,7 +179,7 @@ while ( tline = file.gets )
           if ion.new_site.id == ion.old_site.id # Ion has returned to original site. No net diffusion.
             fileout.puts "Step #{ion.step_departed}=>#{step}: Ion #{ion.id} returned to lattice site #{ion.old_site.id}"
           elsif ion.old_site.is_lattice_site? # Ion has moved to a new lattice site. Complete diffusion event.
-            fileout.puts "Step #{ion.step_departed}=>#{step}: Ion #{ion.id} moved from lattice site #{ion.old_site.id} to #{ion.new_site.id}"
+            fileout.puts "Step #{ion.step_departed}=>#{step}: Ion #{ion.id} moved from lattice site #{ion.old_site.id} to #{ion.new_site.id} in #{step - ion.step_departed} steps"
             fileout.puts "distance between lattice sites: #{ion.distance_travelled}"
             fileout.puts "net displacement: #{Ion.net_displacement}"
             ion.update
@@ -222,12 +208,13 @@ while ( tline = file.gets )
     end
   end
 end
+
 printf "%2.4f\t\tFrenkel pairs formed with Ag_i(Oh)\n" % [nFrenkel_oct.to_f / (step/nskip).to_f]
 puts "%2.4f\t\tFrenkel pairs formed with Ag_i(Td)\n" % [nFrenkel_tet.to_f / (step/nskip).to_f]
 puts "#{noct.to_f / step.to_f}\t\tn(Ag_i(Oh))"
 puts "#{noct_longt.to_f / step.to_f}\t\tn(Ag_i(Oh)) sequential frames"
 puts "#{ntet.to_f / step.to_f}\t\tn(Ag_i(Td))"
 puts "#{ntet_longt.to_f / step.to_f}\t\tn(Ag_i(Td)) sequential frames"
-printf "%.5f => %.5f pct\tOh diffusion events\n" % [ndiff_oct.to_f / (step/nskip).to_f, 100*ndiff_oct.to_f/nFrenkel_oct.to_f ]
+printf "%.5f => %.5f \tOh diffusion events\n" % [ndiff_oct.to_f / (step/nskip).to_f, 100*ndiff_oct.to_f/nFrenkel_oct.to_f ]
 printf "%.5f => %.5f pct\tTd diffusion events\n" % [ndiff_tet.to_f / (step/nskip).to_f , (100*ndiff_tet.to_f/nFrenkel_tet.to_f) ]
 printf "%.5f => %.5f pct\tall diffusion events\n" % [( ndiff_oct + ndiff_tet ).to_f / (step/nskip).to_f , (100*( ndiff_oct + ndiff_tet).to_f / (nFrenkel_tet + nFrenkel_oct).to_f) ]

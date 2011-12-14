@@ -1,0 +1,37 @@
+#! /usr/bin/ruby
+
+# December 12, 2011
+
+# diff_freq
+# calculates the frequency distribution of times between successive diffusion events being completed
+# For each diffusion event set t=0, and then count events happening at each t+dt
+
+def load_file( filename )
+  begin
+    read_in = File.new( filename, 'r' )
+  rescue
+    abort "\"#{ filename }\" not found"
+  end
+end
+
+abort "usage: diff_freq FILE" if ( ARGV[0].nil? ) 
+  
+freq_file = load_file( ARGV[0] )
+data = freq_file.readlines.map{ |line| line.split.map{ |element| element.to_i } }
+bin = [0]
+
+data.each_with_index do |line, index|
+  this_point = line[1]
+  if this_point != 0 then # search for next diffusion event(s)
+    data[index+1..-1].each_with_index do |next_point, dt|
+      if ( next_point[1] != 0 ) then
+        bin[dt+1] = 0 if bin[dt+1].nil? # ensure bin array extends to dt+1
+        bin[dt+1] += 1
+        break
+      end
+    end
+    bin[0] += this_point - 1 
+  end 
+end
+
+bin.each_with_index{ |ibin, index| puts "#{ index } #{ ibin ||= 0 }" }
