@@ -179,7 +179,7 @@ while ( tline = file.gets )
           if ion.new_site.id == ion.old_site.id # Ion has returned to original site. No net diffusion.
             fileout.puts "Step #{ion.step_departed}=>#{step}: Ion #{ion.id} returned to lattice site #{ion.old_site.id}"
           elsif ion.old_site.is_lattice_site? # Ion has moved to a new lattice site. Complete diffusion event.
-            fileout.puts "Step #{ion.step_departed}=>#{step}: Ion #{ion.id} moved from lattice site #{ion.old_site.id} to #{ion.new_site.id} in #{step - ion.step_departed} steps"
+            fileout.puts "Step #{ion.step_departed}=>#{step}: Ion #{ion.id} moved from lattice site #{ion.old_site.id} to #{ion.new_site.id} in #{step - ion.step_departed} steps from #{ ion.first_oct ? 'O_int' : 'Td_int' }"
             fileout.puts "distance between lattice sites: #{ion.distance_travelled}"
             fileout.puts "net displacement: #{Ion.net_displacement}"
             ion.update
@@ -195,8 +195,8 @@ while ( tline = file.gets )
           else
             ntet_longt += 1
           end
-        end
-      end
+        end # 
+      end # test whether ion has moved to another site
       if ion.new_site.is_interstitial? # interstitial exists
         if ion.new_site.is_oct? 
           noct += 1
