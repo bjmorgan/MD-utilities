@@ -73,7 +73,7 @@ readfrominpt_log=.false.
 !==================================================
 
 
-open(10,file='msd.inpt')
+open(10,file='msd.inpt',status='old')
 read(10,'(a)') filein
 open(DISPIO,file=filein,status='old',form='formatted')
 read(10,*) num
@@ -217,7 +217,7 @@ mcorrtime=1
 
 endrun = .false.
 
-do while ( endrun == .false. )
+do while ( endrun .eqv. .false. )
 
     nstep=nstep+nmsdcalltime
 
@@ -226,6 +226,8 @@ do while ( endrun == .false. )
     do i=1,num
         read(DISPIO,*) xdisp(i), ydisp(i), zdisp(i)
     enddo
+	
+	write(50,*) xdisp(1), ydisp(1), zdisp(1)
 
     print *,'entering msdcalc',nstep
     do i=1,num
@@ -243,6 +245,8 @@ do while ( endrun == .false. )
             zdispstore(i,j) = zdispstore(i,j) + zdisp(i)
         enddo
     enddo
+	
+	write(50,*) xdispstore(1,10)
 
     if (overflow) then
 
@@ -342,6 +346,8 @@ do while ( endrun == .false. )
         enddo
 
     endif
+	
+	write(50,*) xmsd(1,50), ymsd(1,50), zmsd(1,50)
 
     !========================================================================
     ! Update array counters

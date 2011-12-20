@@ -96,6 +96,10 @@ read( inptfile%unit, * ) nspecies
 allocate( species(nspecies), stat = err ); call check_allocation( err, "species(:)")  
 do i=1, nspecies
     read( inptfile%unit,* ) species(i)%num
+	if ( species(i)%num < 1 ) then
+		print *,"You have ", species(i)%num, " ions as species ", i
+		stop
+	endif
     read( inptfile%unit,* ) species(i)%z
 enddo
 read( inptfile%unit, * ) restart
@@ -164,8 +168,6 @@ do ns=1, nspecies
     enddo
 enddo
 
-
-
 if (restart) then
 
     call file_open( rstfile, "read" )
@@ -217,7 +219,7 @@ close( inptfile%unit )
 nstep = 0
 mcorrtime = 1
 
-do while ( endrun == .false. )
+do while ( endrun .eqv. .false. )
 
     nstep = nstep + nmsdcalltime
 
@@ -246,8 +248,7 @@ do while ( endrun == .false. )
         enddo
         nullify( p_spec )
     enddo
-
-     
+	    
     do j=1, mcorrmax
         
         if ( j <= mcorrtime ) then ! this should be moved to a separate function, and computed numerically
@@ -396,7 +397,7 @@ dum1=0.0
 dum2=0.0
 
 do ip=1,nspecies
-    write ( msdfile(ip)%unit, * ) dum1,dum1,dum1,dum1,dum1
+    write ( msdfile(ip)%unit, '(5(e12.5,1x))') dum1,dum1,dum1,dum1,dum1
 enddo
 
 write( workfile%unit,* )dum1,dum2

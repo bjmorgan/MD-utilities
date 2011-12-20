@@ -10,12 +10,6 @@ module fileio
 contains
 
 subroutine file_open( the_file, act )     
-
-    implicit none
-    type iofile
-        character(len=20) :: filename
-        integer :: unit
-    end type iofile
     
     type(iofile), intent(in) :: the_file
     character(len=*), intent(in) :: act
@@ -30,12 +24,6 @@ subroutine file_open( the_file, act )
 end subroutine file_open
     
 subroutine file_init( the_file, filename )
-    
-    implicit none
-    type iofile
-        character(len=20) :: filename
-        integer :: unit
-    end type iofile 
     
     type(iofile), intent(out) :: the_file
     character(len=*), intent(in) :: filename
