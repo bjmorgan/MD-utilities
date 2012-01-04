@@ -75,5 +75,8 @@ ARGV.each do |filename|
   data = v1 + data
 end
 
-data.to_a[1..data.size].each_with_index { |num, index| puts "#{ index+1 } #{ num / ARGV.size }"} if options[:average]
-data.to_a[1..data.size].each_with_index { |num, index| puts "#{ index+1 } #{ num }"} if options[:sum]
+offset = data[0] == 0 ? 1 : 0
+output = lambda { |num| num / ARGV.size } if options[:average]
+output = lambda { |num| num } if options[:sum]
+
+data.to_a[ offset..data.size ].each_with_index { |num, index| puts "#{ index+offset } #{ output.call( num ) } "}
