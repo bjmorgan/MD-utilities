@@ -1,0 +1,79 @@
+#! /usr/bin/ruby
+
+# October 20, 2011
+
+require 'matrix'
+require 'optparse'
+
+def max( i, j )
+  if i >= j
+    return i
+  else
+    return j
+  end
+end
+
+class Vector
+  
+  def extend_to_length!( i )
+    array = self.to_a
+    array[i-1] = 0 if array[i-1].nil?
+    array.map! { |n| n.nil? ? 0 : n }
+    return Vector.elements( array )
+  end
+  
+end
+
+options = {}
+
+optparse = OptionParser.new do |opts|
+  opts.banner = "Usage: mergedata [options] file1 file2 ..."
+
+  options[:average] = true
+  opts.on( '-a', '--average', 'averages files to be merged (default)' ) do
+    options[:average] = true
+  end
+
+  options[:sum] = false
+  opts.on( '-s', '--sum', 'adds together files to be merged' ) do
+    options[:sum] = true
+    options[:average] = false
+  end
+
+  opts.on( '-h', '--help', 'displays this screen' )do
+    puts opts
+    exit
+  end
+end
+
+begin
+  optparse.parse!
+rescue OptionParser::ParseError => error_message
+  abort( "Error: #{ error_message }" )
+end
+
+error_string = "#{ optparse.banner }\n#{ optparse.summarize.join() }"
+
+data = Vector.elements([])
+
+abort( error_string ) if ARGV.length == 0
+
+ARGV.each do |filename|
+  new_data = [] 
+  begin
+    file = File.open(filename, 'r')
+  rescue
+    abort "\"#{ filename }\" not found"
+  end
+  this_data = file.readlines.map{ |line| line.split }
+  this_data.each{ |d| new_data[ d[ 0 ].to_i ] = d[ 1 ].to_f }
+  new_data.map!{ |n| n.nil? ? 0 : n }
+  v1 = Vector.elements(new_data)
+  vector_length = max(v1.size, data.size)   # ensure v1 and v2 are the same length
+  v1 = v1.extend_to_length!( vector_length )
+  data = data.extend_to_length!( vector_length )
+  data = v1 + data
+end
+
+data.to_a[1..data.size].each_with_index { |num, index| puts "#{ index+1 } #{ num / ARGV.size }"} if options[:average]
+data.to_a[1..data.size].each_with_index { |num, index| puts "#{ index+1 } #{ num }"} if options[:sum]

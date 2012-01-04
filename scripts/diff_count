@@ -109,6 +109,19 @@ class Ion
     @first_tet = false
   end
   
+  def moved?
+    if ( new_site.id == previous_site.id )
+      return false
+    else
+      return true
+    end
+  end
+  
+  def frenkel_pair_created_at( step )
+    fileout.puts "Step #{step}: Ion #{id} moved from lattice site #{old_site.id}" 
+    step_departed = step 
+  end
+  
   def distance_travelled
     dr2 = 0.0
     dr_vec = []
@@ -164,14 +177,13 @@ while ( tline = file.gets )
   tline.split[1..-1].each_with_index { |value, index| ions[index].new_site.id = value.to_i }
   if ( step % nskip ) == 0
     ions.each do |ion|
-      if ion.new_site.id != ion.previous_site.id # ion has moved to another site
+      if ion.moved? # ion has moved to another site
         if ion.previous_site.is_lattice_site? # Frenkel pair created
-          fileout.puts "Step #{step}: Ion #{ion.id} moved from lattice site #{ion.old_site.id}" 
-          ion.step_departed = step 
-          if ion.new_site.is_oct?
+          ion.frenkel_pair_created_at( step )
+          if ion.new_site.is_oct? # new site is an octahedral interstitial
             nFrenkel_oct += 1
             ion.first_oct = true
-          else
+          else # new site is a tetrahedral interstitial
             nFrenkel_tet += 1
             ion.first_tet = true
           end
