@@ -1,0 +1,163 @@
+#! /usr/bin/ruby
+
+# Assume that we have a binary system, with the first set of ions identifying the octahedral centers
+# Also assumes an orthorhombic cell when applying the minimum image convention
+
+def example_input
+  <<-END
+poscart.out    coordinates file
+500   number of ions of species 1
+500   number of ions of species 2
+1     species at center of octahedra
+2     species making up lattice
+10.0  cutoff
+60.0000000000000    cell length x
+60.0000000000000    cell length y 
+60.0000000000000    cell length z
+  END
+end
+
+class Array
+
+  def to_coords
+    self.collect{ |line| line.split.collect{ |element| element.to_f } }
+  end
+
+end
+
+class Float
+
+  def sqrt
+    Math.sqrt( self )
+  end
+
+end
+
+class Calculation
+
+  attr_reader :nions1, :nions2, :ions, :rcut, :cell
+
+  def initialize( params )
+    @coords_file = params.shift
+    @nions = params.slice!(0..1).collect{ |line| line.to_i }
+    @spec_centre_id = params.shift.to_i - 1
+    @spec_lattice_id = params.shift.to_i - 1
+    @rcut = params.shift.to_f
+    @cell = Cell.new( params.slice!(0..2).collect{ |line| line.to_f } ) 
+    @ions = [ Species.new( self ), Species.new( self ) ]
+    @octahedral_ions = @ions[ @spec_centre_id ]
+    @lattice_ions = @ions[ @spec_lattice_id ]
+  end
+
+  def read_ion_coordinates
+    coords = File.new( @coords_file, "r" ).readlines.to_coords
+    coords[ 0...@nions[0] ].each { |r| @ions[0].add_ion( r ) }
+    coords[ @nions[0]...( @nions[0] + @nions[1] ) ].each { |r| @ions[1].add_ion( r ) }
+  end
+
+  def find_neighbours
+    @octahedral_ions.find_neighbours( @lattice_ions )
+  end
+    
+  def report_octahedra
+    @octahedral_ions.each { |ion| ion.put_neighbours }
+  end  
+
+end
+
+class Cell
+  
+  attr_reader :lengths
+  
+  def initialize( cell_lengths ) # orthorhombic cell
+    @lengths = cell_lengths
+  end
+
+  def pbc( r ) # applies the minimum image convention to the vector r (assumes an orthorhombic cell)
+    r.zip( @lengths ).collect { |r,length| r - ( ( r / length ).round * length ) }
+  end
+
+end
+
+class Species
+
+  def initialize( calc )
+    @num = 0
+    @ions = []
+    @calc = calc
+  end
+
+  def add_ion( r )
+    @num += 1
+    @ions << Ion.new( @calc, @num, r )
+  end   
+
+  def each
+    @ions.each{ |ion| yield( ion ) }
+  end
+
+  def find_neighbours( lattice_ions )
+    self.each do |i| 
+      lattice_ions.each { |j| i.add_neighbour( j ) if i.dr( j ) < @calc.rcut }
+      abort "ion #{i.id} does not have 6 neighbours. Aborting." unless i.has_six_neighbours?
+    end
+  end
+
+end
+
+class Ion
+
+  attr_reader :id, :r
+
+  def initialize( calculation, id, r )
+    @id = id
+    @r = r
+    @neighbours = []
+    @calc = calculation
+  end
+
+  def add_neighbour( ion )
+    @neighbours << ion
+  end
+
+  def cell
+    @calc.cell
+  end
+  
+  def put_neighbours
+    puts @neighbours.collect{ |n| n.id }.join(" ") 
+  end
+
+  def has_six_neighbours?
+    if ( @neighbours.size == 6 ) then
+      return true
+    else
+      return false
+    end
+  end
+
+  def dr( j ) # Calculate distance to another point, within minimum image convention
+    cell.pbc( @r.zip( j.r ).collect do |xyz| 
+      xyz[1] - xyz[0] 
+    end ).inject(0) do |result, x| 
+      result + x*x
+    end.sqrt
+  end
+
+end
+
+def get_inputs # Read input parameters from input file
+  input_file_name = ARGV[0] ||= "getocts.inpt"
+  begin
+    File.new( input_file_name, "r" ).readlines.collect{ |line| line.split[0] }
+  rescue => err
+    abort( "I didn't find the input file \"#{input_file_name}\"\nUse \"getocts mkinpt\" for example input file" )
+  end
+end
+
+abort( example_input ) if ARGV[0] == "mkinpt"
+
+calc = Calculation.new( get_inputs )
+calc.read_ion_coordinates
+calc.find_neighbours
+calc.report_octahedra
