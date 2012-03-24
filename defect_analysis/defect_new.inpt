@@ -1,0 +1,11 @@
+poscart.out  # coordinate file
+1600         # nsteps
+2            # nspec
+448          # natoms
+448          # natoms
+2            # species identity that makes up host lattice
+896          # number of tetrahedra 
+62.1130000000000 61.4720000000000 56.7520000000000 # cell lengths
+1.0 0.0 0.0  # lattice
+0.0 1.0 0.0
+0.0 0.0 1.0
