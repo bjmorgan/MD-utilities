@@ -1,0 +1,41 @@
+#!/bin/csh -f
+# compile and link with xwindow routines
+if ($#argv == 0) goto help
+  set n = $#argv
+  set p = $argv[$n]
+  @ m = $n - 1
+  set ops = ( $argv[1-$m] )  
+
+if (X$p == X-h) goto help
+if (! -e $p.c) then
+   echo 'Not found:' $p.c 
+   exit 2
+endif
+
+set echo
+rm -f $p.o
+
+# ------ compile -------
+set i1 = ' '
+set i2 = ' '
+
+# gcc -c $i1 $i2 $p.c
+   cc -c $ops $i1 $i2 $p.c
+
+
+# ------ link ----------
+
+set LX = '-L/usr/X11/lib'
+
+set libs = '-lX11 -lm'
+
+# gcc -o $p $p.o $LX $libs
+  cc -o $p $p.o $LX $libs
+
+exit
+
+
+help:
+  echo "Usage: cx [ops] prog  -- compile and link with X-window routines"
+  echo "  opt  -O  to optimize"
+  exit
