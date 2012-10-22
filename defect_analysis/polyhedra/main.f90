@@ -2,7 +2,8 @@ program find_polyhedra
 
 use atoms
 use cell
-use polyhedra
+use octahedra
+use tetrahedra
 
 implicit none
 
@@ -14,9 +15,11 @@ integer :: natoms, i, j, k, l, m, n, v, fout, dotprod, temp
 integer :: fin
 integer, dimension(:), allocatable :: v_mask, v_index
 integer, dimension(6) :: v_list
+type(atom), dimension(6) :: p_list
 double precision :: rcut, rcutsq
 double precision :: rij(3), rijsq
 logical, dimension(:), allocatable :: pair_list
+integer, dimension(1) :: opp_ion
 
 interface
 
@@ -39,9 +42,14 @@ interface
         double precision, intent(out) :: h(3,3)
     end subroutine read_input
 
+    subroutine swap( x, i, j )
+        integer, dimension(:), intent(inout) :: x
+        integer, intent(in) :: i, j
+    end subroutine swap
+
 end interface
 
-inptfile = "getocts.inpt"
+inptfile = "polyhedra.inpt"
 call read_input( inptfile, posfile, natoms, cboxlen, rcut, h, cpplane )
 
 rcutsq = rcut * rcut
@@ -90,7 +98,13 @@ end do
 forall (i=1:natoms) part(i)%nneigh = count(part(i)%neigh(:))
 
 if (any(part%nneigh /= 13)) then
-    write(*) "Not closed-packed, or rcut incorrect"
+    write(6,*) "Not closed-packed, or rcut incorrect"
+    write(6,'(x,a,x,f5.1)') "Mean number of neighbours =", float(sum(part%nneigh)) / float(natoms)
+    if (all(part%nneigh > 13)) then
+        write(6,*) "Suggest decreasing rcut"
+    else if (all(part%nneigh < 13)) then
+        write(6,*) "Suggest increasing rcut"
+    endif
     stop
 end if
 
@@ -98,19 +112,22 @@ do i=1, natoms
     call part(i)%set_neighbour_ids
 end do
 
-! find octahedra
+! find octahedra, list of ions are arranged in pairs of opposite vertices (1,2)(3,4)(5,6)
 do i=1, natoms-1
     do j=i+1, natoms
         pair_list = ( part(i)%neigh .and. part(j)%neigh )
         if (count(pair_list) == 4) then
-            pair_list(i) = .true.
-            pair_list(j) = .true.
-            v_list = pack(v_index, pair_list)
+            v_list(1) = i
+            v_list(2) = j
+            v_list(3:6) = pack(v_index, pair_list)
+            opp_ion = pack((/4,5,6/) ,.not.part(v_list(3))%neigh(v_list(4:6)))
+            call swap(v_list, 4, opp_ion(1))
             if (.not.oct_exists(v_list, octa(1:noct))) then
                 noct = noct + 1
                 associate( oct => octa(noct) )
                     call oct%init
-                    call oct%set_vertices( pack(part, pair_list) )
+                    p_list = part(v_list)
+                    call oct%set_vertices( p_list )
                 end associate
             end if
         end if
@@ -167,38 +184,44 @@ contains
 
 subroutine write_output( tetra, octa )
 
-    use polyhedra
+    use octahedra
+    use tetrahedra
 
     implicit none
 
     type(tetrahedron), dimension(:), intent(in) :: tetra
     type(octahedron), dimension(:), intent(in) :: octa
     integer :: ntet_up = 0, ntet_down = 0
-    integer :: fcent, ftet1, ftet2, foct
+    integer :: ftet1_cent, ftet2_cent, foct_cent, ftet1, ftet2, foct
     integer i
 
-    open(file='centres.out', newunit=fcent)
-    open(file='tet1.list', newunit=ftet1)
-    open(file='tet2.list', newunit=ftet2)
-    open(file='oct.list', newunit=foct)
+    open(file='tet1_c.out', newunit=ftet1_cent, form='formatted')
+    open(file='tet2_c.out', newunit=ftet2_cent, form='formatted')
+    open(file='oct_c.out', newunit=foct_cent, form='formatted')
+    open(file='tet1.list', newunit=ftet1, form='formatted')
+    open(file='tet2.list', newunit=ftet2, form='formatted')
+    open(file='oct.list', newunit=foct, form='formatted')
 
     do i=1, size(tetra)    
-        write(fcent,*) tetra(i)%centre
         if (tetra(i)%orientation == 1) then
             ntet_up = ntet_up + 1
             write(ftet1,*) tetra(i)%vertex%id
+            write(ftet1_cent,*) tetra(i)%centre
         else
             ntet_down = ntet_down + 1
             write(ftet2,*) tetra(i)%vertex%id
+            write(ftet2_cent,*) tetra(i)%centre
         end if
     end do
 
     do i=1, size(octa)
-        write(fcent,*) octa(i)%centre
         write(foct,*) octa(i)%vertex%id
+        write(foct_cent,*) octa(i)%centre
     end do
 
-    close(fcent)
+    close(ftet1_cent)
+    close(ftet2_cent)
+    close(foct_cent)
     close(ftet1)
     close(ftet2)
     close(foct)
@@ -246,3 +269,13 @@ pure function ortho_pbc( r, boxlen )
     integer :: i
     forall(i=1:3) ortho_pbc(i) = r(i) - (int(r(i)/boxlen(i)) * boxlen(i)) ! map to orthorhombic cell
 end function ortho_pbc
+
+subroutine swap(x, i, j)
+     implicit none
+     integer, dimension(:), intent(inout) :: x
+     integer, intent(in) :: i, j
+     integer :: temp
+     temp = x(i)
+     x(i) = x(j)
+     x(j) = temp
+end subroutine swap

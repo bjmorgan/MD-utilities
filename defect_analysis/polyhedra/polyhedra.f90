@@ -4,48 +4,23 @@ module polyhedra
     use cell
 
     implicit none
-    
-    private set_centre
-
-    integer :: noct = 0, ntet = 0
-
+    integer, parameter :: string_length = 11
+ 
     type :: polyhedron
         double precision, dimension(3) :: centre
         type(atom), dimension(:), allocatable :: vertex
         integer, dimension(:), allocatable :: vertex_ids
         integer :: num_vert
+        character(len=string_length) :: string
     contains
         procedure :: set_vertex
         procedure :: set_vertices
-        procedure :: set_centre
         procedure :: alloc_vertices
         procedure :: enforce_pbc
+        procedure, private :: set_centre
     end type polyhedron
 
-    type, extends(polyhedron) :: octahedron
     contains
-        procedure :: init => init_oct
-    end type octahedron
-
-    type, extends(polyhedron) :: tetrahedron
-        integer :: orientation
-    contains
-        procedure :: init => init_tet
-    end type tetrahedron
-
-    contains
-
-    subroutine init_oct( this )
-        class(octahedron) :: this
-        this%num_vert = 6
-        call this%alloc_vertices
-    end subroutine init_oct
-
-    subroutine init_tet( this )
-        class(tetrahedron) :: this
-        this%num_vert = 4
-        call this%alloc_vertices
-    end subroutine init_tet
 
     subroutine alloc_vertices( this )
         class(polyhedron) :: this
@@ -66,7 +41,6 @@ module polyhedra
         class(polyhedron) :: this
         integer :: i
         type(atom), dimension(:) :: atoms
-    
         do i=1, this%num_vert
             this%vertex(i) = atoms(i)
             this%vertex_ids(i) = atoms(i)%id
@@ -107,18 +81,5 @@ module polyhedra
         forall (k=1:this%num_vert) this%vertex(k)%r = p(k)%r
         call this%set_centre ! update centre point
     end subroutine enforce_pbc
-
-    logical function oct_exists( vertex_ids, octs )
-        integer, dimension(6), intent(in) :: vertex_ids
-        type(octahedron), dimension(:), intent(in) :: octs
-        integer i
-        do i=1, size(octs)
-            if (count(vertex_ids .eq. octs(i)%vertex_ids) == 6) then
-                oct_exists = .true.
-                return
-            end if
-        end do
-        oct_exists = .false.
-    end function oct_exists
 
 end module polyhedra
