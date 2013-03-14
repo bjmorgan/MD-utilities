@@ -1,9 +1,0 @@
-I_lattice.pos
-500                  natoms
-61.0 61.0 61.0
-10.0                 rcut
-1.0 0.0 0.0
-0.0 1.0 0.0
-0.0 0.0 1.0
-1.0 1.0 1.0          close-packed vector
-

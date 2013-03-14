@@ -3,7 +3,7 @@ EXECUTABLE=polyhedra
 
 all: app
 
-debug: FFLAGS = -check all
+debug: FFLAGS = -check all -traceback
 debug: app
 
 opt: FFLAGS = -fast -O2

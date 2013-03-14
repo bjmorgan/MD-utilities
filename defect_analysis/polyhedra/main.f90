@@ -20,6 +20,8 @@ double precision :: rcut, rcutsq
 double precision :: rij(3), rijsq
 logical, dimension(:), allocatable :: pair_list
 integer, dimension(1) :: opp_ion
+double precision, dimension(:), allocatable :: rijsq_store
+integer, dimension(13) :: nearest_neighbours
 
 interface
 
@@ -47,6 +49,12 @@ interface
         integer, intent(in) :: i, j
     end subroutine swap
 
+    function minimum_locations_from_array( array, number_of_values )    
+        double precision, dimension(:), intent(in) :: array
+        integer, intent(in) :: number_of_values
+        integer, dimension( number_of_values ) :: minimum_locations_from_array
+    end function minimum_locations_from_array
+
 end interface
 
 inptfile = "polyhedra.inpt"
@@ -57,10 +65,11 @@ boxlen = cboxlen * diagonal(h)
 halfboxlen = boxlen/2
 halfcboxlen = boxlen/2 !warning. Should this be cboxlen/2?
 
-allocate (part(natoms))
-allocate (octa(natoms))
-allocate (tetra(natoms*2))
-allocate (pair_list(natoms), v_mask(natoms), v_index(natoms))
+allocate( part(natoms) )
+allocate( octa(natoms) )
+allocate( tetra(natoms*2) )
+allocate( pair_list(natoms), v_mask(natoms), v_index(natoms) )
+allocate( rijsq_store( natoms ) )
 
 open(file=posfile, status='old', form='formatted', newunit=fin)
 do i=1, natoms
@@ -70,43 +79,31 @@ end do
 
 forall (i=1:natoms) 
     part(i)%neigh(:) = .false.
-    part(i)%neigh(i) = .true.
     part(i)%id = i
     ! map to an orthorhombic cell, assuming rhombohedral input
     part(i)%r = ortho_pbc(part(i)%r, boxlen) 
-    v_index(i) = i
 end forall
+
+forall (i=1:natoms) v_index(i) = i
 
 ! create neighbour list
 ! assuming the input file is in lab coordinates
 do i=1, natoms
-    do j=i+1, natoms
-        rij = part(i)%r - part(j)%r
-        ! minimum image convention
-        do k=1, 3
-            rij(:) = rij(:)-cboxlen(k) * h(k,:) * int(relr(rij(:), k) / halfcboxlen(k))
-        end do
-        rijsq = sum(rij*rij)
-        if (rijsq < rcutsq) then
-            part(i)%neigh(j) = .true. 
-            part(j)%neigh(i) = .true.    
-        end if
+    do j=1, natoms
+        rij = r_as_minimum_image( dr( part(i)%r, part(j)%r ) )
+        rijsq_store(j) = sum( rij * rij )
+    enddo
+    nearest_neighbours = minimum_locations_from_array( rijsq_store, 13 )
+    do j=1, size(nearest_neighbours)
+        part(i)%neigh(nearest_neighbours(j)) = .true.
     end do
 end do
 
-
 forall (i=1:natoms) part(i)%nneigh = count(part(i)%neigh(:))
 
-if (any(part%nneigh /= 13)) then
-    write(6,*) "Not closed-packed, or rcut incorrect"
-    write(6,'(x,a,x,f5.1)') "Mean number of neighbours =", float(sum(part%nneigh)) / float(natoms)
-    if (all(part%nneigh > 13)) then
-        write(6,*) "Suggest decreasing rcut"
-    else if (all(part%nneigh < 13)) then
-        write(6,*) "Suggest increasing rcut"
-    endif
-    stop
-end if
+! By construction, all neighbour lists now have 13 true entries
+! since the previous section finds the 13 closest ions
+! Not sure what happens now if the system is *not* close-packed !!
 
 do i=1, natoms
     call part(i)%set_neighbour_ids
@@ -271,11 +268,30 @@ pure function ortho_pbc( r, boxlen )
 end function ortho_pbc
 
 subroutine swap(x, i, j)
-     implicit none
-     integer, dimension(:), intent(inout) :: x
-     integer, intent(in) :: i, j
-     integer :: temp
-     temp = x(i)
-     x(i) = x(j)
-     x(j) = temp
+    implicit none
+    integer, dimension(:), intent(inout) :: x
+    integer, intent(in) :: i, j
+    integer :: temp
+    temp = x(i)
+    x(i) = x(j)
+    x(j) = temp
 end subroutine swap
+
+function minimum_locations_from_array( array, number_of_values )
+    implicit none
+    double precision, dimension(:), intent(in) :: array
+    integer, intent(in) :: number_of_values
+    logical, dimension( size(array) ) :: mask
+    integer, dimension( number_of_values ) :: minimum_locations_from_array
+    integer :: i
+
+    minimum_locations_from_array = 0
+    mask = .true.
+
+    do i=1, number_of_values
+        minimum_locations_from_array(i) = minloc(array, 1, mask )
+        mask( minloc( array, 1, mask ) ) = .false.
+    end do    
+
+end function minimum_locations_from_array
+

@@ -29,6 +29,6 @@ contains
         this%neighbour_id = 0
         this%neighbour_id = pack(id_list, this%neigh)
 
-    end subroutine set_neighbour_ids        
+    end subroutine set_neighbour_ids      
 
 end module atoms
